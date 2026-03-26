@@ -437,6 +437,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         row.message.role === "assistant" &&
         (() => {
           const messageText = row.message.text || (row.message.streaming ? "" : "(empty response)");
+          const canCopyMessage = row.message.text.trim().length > 0;
           return (
             <>
               {row.showCompletionDivider && (
@@ -448,7 +449,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <div className="min-w-0 px-1 py-0.5">
+              <div className="group min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -510,15 +511,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     </div>
                   );
                 })()}
-                <p className="mt-1.5 text-[10px] text-muted-foreground/30">
-                  {formatMessageMeta(
-                    row.message.createdAt,
-                    row.message.streaming
-                      ? formatElapsed(row.durationStart, nowIso)
-                      : formatElapsed(row.durationStart, row.message.completedAt),
-                    timestampFormat,
-                  )}
-                </p>
+                <div className="mt-1.5 flex w-fit items-center gap-2">
+                  <p className="text-[10px] text-muted-foreground/30">
+                    {formatMessageMeta(
+                      row.message.createdAt,
+                      row.message.streaming
+                        ? formatElapsed(row.durationStart, nowIso)
+                        : formatElapsed(row.durationStart, row.message.completedAt),
+                      timestampFormat,
+                    )}
+                  </p>
+                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                    {canCopyMessage && <MessageCopyButton text={row.message.text} />}
+                  </div>
+                </div>
               </div>
             </>
           );
