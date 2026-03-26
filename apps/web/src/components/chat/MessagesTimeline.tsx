@@ -449,7 +449,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   <span className="h-px flex-1 bg-border" />
                 </div>
               )}
-              <div className="group min-w-0 px-1 py-0.5">
+              <div className="group/assistant-message min-w-0 px-1 py-0.5">
                 <ChatMarkdown
                   text={messageText}
                   cwd={markdownCwd}
@@ -521,7 +521,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                       timestampFormat,
                     )}
                   </p>
-                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+                  <div className="flex items-center gap-1.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover/assistant-message:opacity-100">
                     {canCopyMessage && <MessageCopyButton text={row.message.text} />}
                   </div>
                 </div>
