@@ -3228,6 +3228,98 @@ it.effect(
     }),
 );
 
+it.effect.each([
+  { action: "retries", outcome: "failure", reattach: false },
+  { action: "retries", outcome: "timeout", reattach: false },
+  { action: "cancels retries for a resumed thread", outcome: "failure", reattach: true },
+  { action: "cancels retries for a resumed thread", outcome: "timeout", reattach: true },
+] as const)(
+  "ProviderSessionManagerV2 $action after an idle unload $outcome",
+  ({ outcome, reattach }) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const attempts = yield* Ref.make(0);
+      const beforeUnload = Effect.gen(function* () {
+        const attempt = yield* Ref.updateAndGet(attempts, (count) => count + 1);
+        if (attempt === 1) {
+          if (outcome === "timeout") return yield* Effect.never;
+          return yield* Effect.die("unload failed");
+        }
+      });
+      const effect = Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const now = yield* DateTime.now;
+        const threadId = ThreadId.make("thread-idle-unload-retry");
+        const providerSessionId = idAllocator.derive.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+        });
+        const providerThread = makeProviderThread({
+          idAllocator,
+          threadId,
+          providerSessionId,
+          now,
+        });
+        yield* eventSink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator, threadId, now })],
+        });
+        const runtime = yield* manager.open({
+          threadId,
+          providerSessionId,
+          modelSelection,
+          runtimePolicy,
+        });
+        yield* runtime.resumeThread({ providerThread, threadId, modelSelection, runtimePolicy });
+        const subscription = yield* runtime.subscribeEvents!;
+        const queue = (yield* Ref.get(state)).eventQueues.get(String(providerSessionId));
+        assert.isDefined(queue);
+        yield* Queue.offer(queue!, {
+          type: "turn.terminal",
+          driver: CODEX_DRIVER,
+          providerThreadId: providerThread.id,
+          providerTurnId: idAllocator.derive.providerTurn({
+            driver: CODEX_DRIVER,
+            nativeTurnId: "idle-unload-retry",
+          }),
+          runOrdinal: 1,
+          status: "completed",
+          failure: null,
+          threadDisposition: "reusable",
+        });
+        yield* Stream.runHead(subscription.events);
+        yield* TestClock.adjust("1 second");
+        if (outcome === "timeout") yield* TestClock.adjust("10 seconds");
+        assert.equal(yield* Ref.get(attempts), 1);
+        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, []);
+
+        if (reattach) {
+          yield* runtime.resumeThread({ providerThread, threadId, modelSelection, runtimePolicy });
+          yield* TestClock.adjust("1 second");
+          assert.equal(yield* Ref.get(attempts), 1);
+          assert.equal((yield* Ref.get(state)).resumeCount, 2);
+          assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, []);
+          return;
+        }
+        yield* TestClock.adjust("1 second");
+        assert.equal(yield* Ref.get(attempts), 2);
+        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread"]);
+        assert.equal((yield* Ref.get(state)).closeCount, 0);
+      });
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 1000,
+            beforeUnload,
+            hasPendingBackgroundWork: Effect.succeed(true),
+          }),
+        ),
+        Effect.scoped,
+      );
+    }),
+);
+
 it.effect(
   "ProviderSessionManagerV2 re-attaching a thread waits for its in-flight unload, then reloads it",
   () =>
